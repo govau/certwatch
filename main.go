@@ -123,7 +123,7 @@ func postgresDBFromCF() (*pg.DB, error) {
 func (s *server) gotCert(cert *Certificate) error {
 	interesting := false
 	for _, dom := range cert.AllDomains {
-		if strings.HasSuffix(dom, ".gov.au") {
+		if strings.HasSuffix(dom, ".com") {
 			interesting = true
 			break
 		}
@@ -137,6 +137,10 @@ func (s *server) gotCert(cert *Certificate) error {
 				Seen:         time.Now(),
 			})
 			if err != nil {
+				// we will often run two of us, to ensure we don't miss anything, so we expect a lot of duplicate errors
+				if isErrDuplicateKey(err) {
+					continue
+				}
 				// TOOD: catch specific error: ERROR #23505 duplicate key value violates unique constraint "cert_observeds_pkey" (addr="[::1]:5434")
 				return err
 			}
@@ -146,12 +150,26 @@ func (s *server) gotCert(cert *Certificate) error {
 	return nil
 }
 
+func isErrRelationAlreadyExists(err error) bool {
+	return err != nil && strings.HasPrefix(err.Error(), "ERROR #42P07")
+}
+
+func isErrDuplicateKey(err error) bool {
+	return err != nil && strings.HasPrefix(err.Error(), "ERROR #23505")
+}
+
 func (s *server) Init() error {
 	for _, model := range []interface{}{
 		&CertObserved{},
 	} {
-		// Ignore failures here - the table probably already exists TODO catch specific erro: ERROR #42P07 relation "cert_observeds" already exists (addr="[::1]:5434")
-		s.DB.CreateTable(model, nil)
+		err := s.DB.CreateTable(model, nil)
+		if err != nil {
+			// swallow this one, we'll see if on every startup
+			if isErrRelationAlreadyExists(err) {
+				continue
+			}
+			return err
+		}
 	}
 	return nil
 }
