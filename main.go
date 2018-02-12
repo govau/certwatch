@@ -141,7 +141,6 @@ func (s *server) gotCert(cert *Certificate) error {
 				if isErrDuplicateKey(err) {
 					continue
 				}
-				// TOOD: catch specific error: ERROR #23505 duplicate key value violates unique constraint "cert_observeds_pkey" (addr="[::1]:5434")
 				return err
 			}
 		}
