@@ -5,11 +5,22 @@ docker run -p 5434:5432 --name certpg -e POSTGRES_USER=certpg -e POSTGRES_PASSWO
 
 export VCAP_APPLICATION='{}'
 export VCAP_SERVICES='{"postgres": [{"credentials": {"username": "certpg", "host": "localhost", "password": "certpg", "name": "certpg", "port": 5434}, "tags": ["postgres"]}]}'
-go run main.go
+go run *.go
 ```
 
 To checkout database:
 
 ```bash
 psql "dbname=certpg host=localhost user=certpg password=certpg port=5434"
+```
+
+Build and push:
+
+```bash
+cfy create-service postgres 9.6-5G govaucerts
+
+# Build and push
+dep ensure
+GOOS=linux GOARCH=amd64 go build -o deploy/certwatch
+cfy push -f deploy/manifest.yml -p deploy
 ```

@@ -1,0 +1,7 @@
+buildpack: binary_buildpack
+memory: 256M
+instances: 4
+services:
+- govaucerts
+applications:
+- name: certwatch
