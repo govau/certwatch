@@ -1,7 +1,7 @@
 buildpack: binary_buildpack
 memory: 350M
 disk_quota: 50M
-instances: 10
+instances: 4
 services:
 - govaucerts
 applications:
