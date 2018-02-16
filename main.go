@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -38,18 +37,6 @@ func postgresCredsFromCF() (map[string]interface{}, error) {
 	}
 
 	return dbEnv[0].Credentials, nil
-}
-
-func isErrRelationAlreadyExists(err error) bool {
-	return err != nil && strings.HasPrefix(err.Error(), "ERROR #42P07")
-}
-
-func isErrDuplicateKey(err error) bool {
-	return err != nil && strings.HasPrefix(err.Error(), "ERROR #23505")
-}
-
-func isErrNotFound(err error) bool {
-	return err != nil && err.Error() == "pg: no rows in result set"
 }
 
 const (
