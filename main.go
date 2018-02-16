@@ -53,7 +53,7 @@ func isErrNotFound(err error) bool {
 }
 
 const (
-	WorkerCount = 10
+	WorkerCount = 5
 )
 
 type DBInitter struct {
