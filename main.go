@@ -104,7 +104,7 @@ func main() {
 	}
 
 	pgxPool, err := pgx.NewConnPool(pgx.ConnPoolConfig{
-		MaxConnections: 20,
+		MaxConnections: WorkerCount * 2,
 		ConnConfig: pgx.ConnConfig{
 			Database: creds["name"].(string),
 			User:     creds["username"].(string),
