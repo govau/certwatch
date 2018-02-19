@@ -22,13 +22,25 @@ var (
 		Name: "jobs_with_errors",
 		Help: "number of jobs with errors",
 	})
-	remainingEntries = prometheus.NewGauge(prometheus.GaugeOpts{
+	remainingEntries = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "remaining_entries",
 		Help: "total entries backlogged",
-	})
-	processedEntries = prometheus.NewGauge(prometheus.GaugeOpts{
+	}, []string{"log"})
+	processedEntries = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "processed_entries",
 		Help: "total entries processed",
+	}, []string{"log"})
+	certsFound = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "govau_certs_found",
+		Help: "Total certs found (by domain)",
+	})
+	uniqueCertsFound = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "unique_govau_certs_found",
+		Help: "Total unique cert timestamps found",
+	})
+	activeLogsMonitored = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "active_logs_monitored",
+		Help: "Total active logs monitored",
 	})
 )
 
@@ -38,6 +50,9 @@ func init() {
 	prometheus.MustRegister(jobsWithErrors)
 	prometheus.MustRegister(remainingEntries)
 	prometheus.MustRegister(processedEntries)
+	prometheus.MustRegister(certsFound)
+	prometheus.MustRegister(uniqueCertsFound)
+	prometheus.MustRegister(activeLogsMonitored)
 }
 
 func updateStatLoop() {
@@ -64,20 +79,49 @@ func updateStatLoop() {
 			jobsWithErrors.Set(float64(i))
 		}
 
-		var knownEntries int64
-		err = pgxPool.QueryRow("SELECT SUM(processed) FROM monitored_logs").Scan(&knownEntries)
+		err = pgxPool.QueryRow("SELECT COUNT(*) FROM cert_index").Scan(&i)
 		if err != nil {
 			log.Println(err)
 		} else {
-			var remEntries int64
-			err = pgxPool.QueryRow("SELECT SUM((args->>'End')::int - (args->>'Start')::int) FROM que_jobs WHERE job_class = 'get_entries'").Scan(&remEntries)
-			if err != nil {
-				log.Println(err)
-			} else {
-				remainingEntries.Set(float64(remEntries))
-				processedEntries.Set(float64(knownEntries - remEntries))
-			}
+			certsFound.Set(float64(i))
+		}
 
+		err = pgxPool.QueryRow("SELECT COUNT(*) FROM cert_store").Scan(&i)
+		if err != nil {
+			log.Println(err)
+		} else {
+			uniqueCertsFound.Set(float64(i))
+		}
+
+		err = pgxPool.QueryRow("SELECT COUNT(*) FROM monitored_logs").Scan(&i)
+		if err != nil {
+			log.Println(err)
+		} else {
+			activeLogsMonitored.Set(float64(i))
+		}
+
+		rows, err := pgxPool.Query(`SELECT l.processed, COALESCE(r.remaining, 0), l.url
+			FROM monitored_logs l
+			LEFT OUTER JOIN
+			(SELECT args->>'URL' url, SUM((args->>'End')::int - (args->>'Start')::int) remaining FROM que_jobs WHERE job_class = 'get_entries' GROUP BY url) r
+			ON l.url = r.url
+		`)
+		if err != nil {
+			log.Println(err)
+		} else {
+			for rows.Next() {
+				var processed, remaining int64
+				var url string
+				err = rows.Scan(&processed, &remaining, &url)
+				if err != nil {
+					log.Println(err)
+					break
+				}
+
+				remainingEntries.With(prometheus.Labels{"log": url}).Set(float64(remaining))
+				processedEntries.With(prometheus.Labels{"log": url}).Set(float64(processed - remaining))
+			}
+			rows.Close()
 		}
 
 		time.Sleep(time.Second * 30)
