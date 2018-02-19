@@ -28,7 +28,17 @@ const (
 	KeyGetEntries = "get_entries"
 
 	DomainSuffix = ".gov.au"
+	MatchDomain  = "gov.au"
+
+	MaxToRequest = 1024
 )
+
+func minInt64(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
+}
 
 func GetEntries(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) error {
 	var md GetEntriesConf
@@ -42,7 +52,8 @@ func GetEntries(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) er
 		return err
 	}
 
-	entries, err := lc.GetRawEntries(context.Background(), int64(md.Start), int64(md.End)-1)
+	// Never request more than MaxToRequest, else we get surprised by a massive server response
+	entries, err := lc.GetRawEntries(context.Background(), int64(md.Start), minInt64(int64(md.End)-1, int64(md.Start)+MaxToRequest))
 	if err != nil {
 		return err
 	}
@@ -87,12 +98,12 @@ func GetEntries(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) er
 		doms := make(map[string]bool)
 
 		if cert != nil {
-			if strings.HasSuffix(cert.Subject.CommonName, DomainSuffix) {
+			if strings.HasSuffix(cert.Subject.CommonName, DomainSuffix) || cert.Subject.CommonName == MatchDomain {
 				doms[cert.Subject.CommonName] = true
 			}
 
 			for _, name := range cert.DNSNames {
-				if strings.HasSuffix(name, DomainSuffix) {
+				if strings.HasSuffix(name, DomainSuffix) || name == MatchDomain {
 					doms[name] = true
 				}
 			}
