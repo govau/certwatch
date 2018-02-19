@@ -15,6 +15,8 @@ import (
 
 	"github.com/bgentry/que-go"
 	"github.com/jackc/pgx"
+
+	"github.com/govau/certwatch/jobs"
 )
 
 type server struct {
@@ -169,29 +171,29 @@ func main() {
 
 	qc := que.NewClient(pgxPool)
 	workers := que.NewWorkerPool(qc, que.WorkMap{
-		KeyUpdateLogs: (&JobFuncWrapper{
+		jobs.KeyUpdateLogs: (&jobs.JobFuncWrapper{
 			QC:        qc,
-			Logger:    log.New(os.Stderr, KeyUpdateLogs+" ", log.LstdFlags),
-			F:         UpdateCTLogList,
+			Logger:    log.New(os.Stderr, jobs.KeyUpdateLogs+" ", log.LstdFlags),
+			F:         jobs.UpdateCTLogList,
 			Singleton: true,
 			Duration:  time.Hour * 24,
 		}).Run,
-		KeyNewLogMetadata: (&JobFuncWrapper{
+		jobs.KeyNewLogMetadata: (&jobs.JobFuncWrapper{
 			QC:     qc,
-			Logger: log.New(os.Stderr, KeyNewLogMetadata+" ", log.LstdFlags),
-			F:      NewLogMetadata,
+			Logger: log.New(os.Stderr, jobs.KeyNewLogMetadata+" ", log.LstdFlags),
+			F:      jobs.NewLogMetadata,
 		}).Run,
-		KeyCheckSTH: (&JobFuncWrapper{
+		jobs.KeyCheckSTH: (&jobs.JobFuncWrapper{
 			QC:        qc,
-			Logger:    log.New(os.Stderr, KeyCheckSTH+" ", log.LstdFlags),
-			F:         CheckLogSTH,
+			Logger:    log.New(os.Stderr, jobs.KeyCheckSTH+" ", log.LstdFlags),
+			F:         jobs.CheckLogSTH,
 			Singleton: true,
 			Duration:  time.Minute * 5,
 		}).Run,
-		KeyGetEntries: (&JobFuncWrapper{
+		jobs.KeyGetEntries: (&jobs.JobFuncWrapper{
 			QC:     qc,
-			Logger: log.New(os.Stderr, KeyGetEntries+" ", log.LstdFlags),
-			F:      GetEntries,
+			Logger: log.New(os.Stderr, jobs.KeyGetEntries+" ", log.LstdFlags),
+			F:      jobs.GetEntries,
 		}).Run,
 	}, WorkerCount)
 
@@ -219,7 +221,7 @@ func main() {
 	go workers.Start()
 
 	err = qc.Enqueue(&que.Job{
-		Type:  KeyUpdateLogs,
+		Type:  jobs.KeyUpdateLogs,
 		Args:  []byte("{}"),
 		RunAt: time.Now(),
 	})
