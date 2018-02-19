@@ -1,0 +1,8 @@
+buildpack: binary_buildpack
+memory: 350M
+disk_quota: 50M
+instances: 1
+services:
+- govaucerts
+applications:
+- name: certmetrics

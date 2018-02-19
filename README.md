@@ -23,4 +23,8 @@ cfy create-service postgres 9.6-5G govaucerts
 dep ensure
 GOOS=linux GOARCH=amd64 go build -o cf/certwatch/certwatch cmd/certwatch/main.go
 cfy push -f cf/certwatch/manifest.yml -p cf/certwatch
+
+# Metrics
+GOOS=linux GOARCH=amd64 go build -o cf/certmetrics/certmetrics cmd/certmetrics/metrics-main.go
+cfy push -f cf/certmetrics/manifest.yml -p cf/certmetrics
 ```
