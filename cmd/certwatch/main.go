@@ -20,7 +20,7 @@ const (
 )
 
 func main() {
-	pgxPool, err := db.GetPGXPool(WorkerCount*2)
+	pgxPool, err := db.GetPGXPool(WorkerCount * 2)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -51,6 +51,13 @@ func main() {
 			Logger: log.New(os.Stderr, jobs.KeyGetEntries+" ", log.LstdFlags),
 			F:      jobs.GetEntries,
 		}).Run,
+		jobs.KeyFixMetadata1: (&jobs.JobFuncWrapper{
+			QC:        qc,
+			Logger:    log.New(os.Stderr, jobs.KeyFixMetadata1+" ", log.LstdFlags),
+			F:         jobs.RefreshMetadata1ForEntries,
+			Singleton: true,
+			Duration:  time.Minute * 15,
+		}).Run,
 	}, WorkerCount)
 
 	// Prepare a shutdown function
@@ -78,6 +85,16 @@ func main() {
 
 	err = qc.Enqueue(&que.Job{
 		Type:  jobs.KeyUpdateLogs,
+		Args:  []byte("{}"),
+		RunAt: time.Now(),
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Add issuer, common name fields
+	err = qc.Enqueue(&que.Job{
+		Type:  jobs.KeyFixMetadata1,
 		Args:  []byte("{}"),
 		RunAt: time.Now(),
 	})

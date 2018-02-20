@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	ErrTryAgainPlease  = errors.New("try again, now we have metadata")
-	ErrDoNotReschedule = errors.New("no need to reschedule, we are done")
+	ErrImmediateReschedule = errors.New("commit tx, and reschedule ASAP")
+	ErrDoNotReschedule     = errors.New("no need to reschedule, we are done")
 )
 
 type JobFunc func(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) error
@@ -39,7 +39,7 @@ func (scw *JobFuncWrapper) ensureNooneElseRunning(job *que.Job, tx *pgx.Tx, key 
 			if err != nil {
 				return false, err
 			}
-			return false, ErrTryAgainPlease
+			return false, ErrImmediateReschedule
 		}
 		return false, err
 	}
@@ -96,11 +96,19 @@ func (scw *JobFuncWrapper) scheduleJobLater(job *que.Job, tx *pgx.Tx, key string
 }
 
 func (scw *JobFuncWrapper) Run(job *que.Job) error {
+	for {
+		err := scw.tryRun(job)
+		if err != ErrImmediateReschedule {
+			return err
+		}
+	}
+}
+
+func (scw *JobFuncWrapper) tryRun(job *que.Job) error {
 	tx, err := job.Conn().Begin()
 	if err != nil {
 		return err
 	}
-	// Per docs it is safe call rollback() as a noop on an already closed transaction
 	defer tx.Rollback()
 
 	scw.Logger.Println("starting", job.ID)

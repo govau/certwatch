@@ -9,12 +9,13 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	que "github.com/bgentry/que-go"
 	ct "github.com/google/certificate-transparency-go"
 	ctclient "github.com/google/certificate-transparency-go/client"
 	ctjsonclient "github.com/google/certificate-transparency-go/jsonclient"
-	"github.com/google/certificate-transparency-go/tls"
+	cttls "github.com/google/certificate-transparency-go/tls"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/jackc/pgx"
 )
@@ -25,12 +26,15 @@ type GetEntriesConf struct {
 }
 
 const (
-	KeyGetEntries = "get_entries"
+	KeyGetEntries   = "get_entries"
+	KeyFixMetadata1 = "fix_metadata_1"
 
 	DomainSuffix = ".gov.au"
 	MatchDomain  = "gov.au"
 
 	MaxToRequest = 1024
+
+	MaxToUpdate = 1024
 )
 
 func minInt64(a, b int64) int64 {
@@ -38,6 +42,94 @@ func minInt64(a, b int64) int64 {
 		return a
 	}
 	return b
+}
+
+// Extract metadata for cert
+func getFieldsAndValsForCert(leaf *ct.MerkleTreeLeaf) map[string]interface{} {
+	var cert *ctx509.Certificate
+	switch leaf.TimestampedEntry.EntryType {
+	case ct.X509LogEntryType:
+		cert, _ = leaf.X509Certificate()
+	case ct.PrecertLogEntryType:
+		cert, _ = leaf.Precertificate()
+	}
+
+	var nvb, nva time.Time
+	var issuer string
+	if cert != nil {
+		nva = cert.NotAfter
+		nvb = cert.NotBefore
+		issuer = cert.Issuer.CommonName
+	}
+
+	return map[string]interface{}{
+		"not_valid_after":  nva,
+		"not_valid_before": nvb,
+		"issuer_cn":        issuer,
+	}
+}
+
+func RefreshMetadata1ForEntries(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) error {
+	processed := 0
+	rows, err := tx.Query("SELECT key, leaf FROM cert_store WHERE issuer_cn IS NULL LIMIT $1", MaxToUpdate)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var updates []string
+	var valvals [][]interface{}
+	for rows.Next() {
+		var key, leafData []byte
+		err = rows.Scan(&key, &leafData)
+		if err != nil {
+			return err
+		}
+
+		var leaf ct.MerkleTreeLeaf
+		_, err := cttls.Unmarshal(leafData, &leaf)
+		if err != nil {
+			return err
+		}
+
+		var sets []string
+		var vals []interface{}
+		cnt := 1
+		for k, v := range getFieldsAndValsForCert(&leaf) {
+			sets = append(sets, fmt.Sprintf("%s = $%d", k, cnt))
+			vals = append(vals, v)
+			cnt++
+		}
+		vals = append(vals, key)
+
+		updates = append(updates, fmt.Sprintf("UPDATE cert_store SET %s WHERE key = $%d", strings.Join(sets, ", "), cnt))
+		valvals = append(valvals, vals)
+
+		processed++
+	}
+	rows.Close()
+
+	for i := 0; i < processed; i++ {
+		_, err = tx.Exec(updates[i], valvals[i]...)
+		if err != nil {
+			return err
+		}
+	}
+
+	logger.Printf("Updated %d records", processed)
+
+	// If we got any, try again
+	if processed > 0 {
+		err = tx.Commit()
+		if err != nil {
+			return err
+		}
+
+		return ErrImmediateReschedule
+	}
+
+	// Returning nil will commit and reschedule via cron
+	return nil
 }
 
 func GetEntries(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) error {
@@ -61,7 +153,7 @@ func GetEntries(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) er
 	idx := md.Start
 	for _, e := range entries.Entries {
 		var leaf ct.MerkleTreeLeaf
-		_, err := tls.Unmarshal(e.LeafInput, &leaf)
+		_, err := cttls.Unmarshal(e.LeafInput, &leaf)
 		if err != nil {
 			return err
 		}
@@ -116,13 +208,23 @@ func GetEntries(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) er
 			// things. TODO...
 			leaf.TimestampedEntry.Timestamp = 0
 
-			certToStore, err := tls.Marshal(leaf)
+			certToStore, err := cttls.Marshal(leaf)
 			if err != nil {
 				return err
 			}
 
 			kh := sha256.Sum256(certToStore)
-			_, err = tx.Exec("INSERT INTO cert_store (key, leaf) VALUES ($1, $2) ON CONFLICT DO NOTHING", kh[:], certToStore)
+
+			fields := []string{"key", "leaf"}
+			ph := []string{"$1", "$2"}
+			vals := []interface{}{kh[:], certToStore}
+			for k, v := range getFieldsAndValsForCert(&leaf) {
+				fields = append(fields, k)
+				ph = append(ph, fmt.Sprintf("$%d", len(ph)+1))
+				vals = append(vals, v)
+			}
+
+			_, err = tx.Exec(fmt.Sprintf("INSERT INTO cert_store (%s) VALUES (%s) ON CONFLICT DO NOTHING", strings.Join(fields, ", "), strings.Join(ph, ", ")), vals...)
 			if err != nil {
 				return err
 			}

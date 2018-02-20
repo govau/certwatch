@@ -31,7 +31,7 @@ func NewLogMetadata(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx
 			if err != nil {
 				return err
 			}
-			return ErrTryAgainPlease
+			return ErrImmediateReschedule
 		}
 		return err
 	}
