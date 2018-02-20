@@ -51,13 +51,14 @@ func main() {
 			Logger: log.New(os.Stderr, jobs.KeyGetEntries+" ", log.LstdFlags),
 			F:      jobs.GetEntries,
 		}).Run,
-		jobs.KeyFixMetadata1: (&jobs.JobFuncWrapper{
-			QC:        qc,
-			Logger:    log.New(os.Stderr, jobs.KeyFixMetadata1+" ", log.LstdFlags),
-			F:         jobs.RefreshMetadata1ForEntries,
-			Singleton: true,
-			Duration:  time.Minute * 15,
-		}).Run,
+		// Data migration job
+		// jobs.KeyFixMetadata1: (&jobs.JobFuncWrapper{
+		// 	QC:        qc,
+		// 	Logger:    log.New(os.Stderr, jobs.KeyFixMetadata1+" ", log.LstdFlags),
+		// 	F:         jobs.RefreshMetadata1ForEntries,
+		// 	Singleton: true,
+		// 	Duration:  time.Minute * 15,
+		// }).Run,
 	}, WorkerCount)
 
 	// Prepare a shutdown function
@@ -92,15 +93,15 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Add issuer, common name fields
-	err = qc.Enqueue(&que.Job{
-		Type:  jobs.KeyFixMetadata1,
-		Args:  []byte("{}"),
-		RunAt: time.Now(),
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
+	// Was used for data migration, no longer needed
+	// err = qc.Enqueue(&que.Job{
+	// 	Type:  jobs.KeyFixMetadata1,
+	// 	Args:  []byte("{}"),
+	// 	RunAt: time.Now(),
+	// })
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
 	log.Println("Started up... waiting for ctrl-C.")
 

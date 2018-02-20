@@ -26,8 +26,8 @@ type GetEntriesConf struct {
 }
 
 const (
-	KeyGetEntries   = "get_entries"
-	KeyFixMetadata1 = "fix_metadata_1"
+	KeyGetEntries = "get_entries"
+	// KeyFixMetadata1 = "fix_metadata_1"
 
 	DomainSuffix = ".gov.au"
 	MatchDomain  = "gov.au"
@@ -69,68 +69,69 @@ func getFieldsAndValsForCert(leaf *ct.MerkleTreeLeaf) map[string]interface{} {
 	}
 }
 
-func RefreshMetadata1ForEntries(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) error {
-	processed := 0
-	rows, err := tx.Query("SELECT key, leaf FROM cert_store WHERE issuer_cn IS NULL LIMIT $1", MaxToUpdate)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
+// The following was a once-off for data migration. A similar pattern may be needed in the future.
+// func RefreshMetadata1ForEntries(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) error {
+// 	processed := 0
+// 	rows, err := tx.Query("SELECT key, leaf FROM cert_store WHERE issuer_cn IS NULL LIMIT $1", MaxToUpdate)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer rows.Close()
 
-	var updates []string
-	var valvals [][]interface{}
-	for rows.Next() {
-		var key, leafData []byte
-		err = rows.Scan(&key, &leafData)
-		if err != nil {
-			return err
-		}
+// 	var updates []string
+// 	var valvals [][]interface{}
+// 	for rows.Next() {
+// 		var key, leafData []byte
+// 		err = rows.Scan(&key, &leafData)
+// 		if err != nil {
+// 			return err
+// 		}
 
-		var leaf ct.MerkleTreeLeaf
-		_, err := cttls.Unmarshal(leafData, &leaf)
-		if err != nil {
-			return err
-		}
+// 		var leaf ct.MerkleTreeLeaf
+// 		_, err := cttls.Unmarshal(leafData, &leaf)
+// 		if err != nil {
+// 			return err
+// 		}
 
-		var sets []string
-		var vals []interface{}
-		cnt := 1
-		for k, v := range getFieldsAndValsForCert(&leaf) {
-			sets = append(sets, fmt.Sprintf("%s = $%d", k, cnt))
-			vals = append(vals, v)
-			cnt++
-		}
-		vals = append(vals, key)
+// 		var sets []string
+// 		var vals []interface{}
+// 		cnt := 1
+// 		for k, v := range getFieldsAndValsForCert(&leaf) {
+// 			sets = append(sets, fmt.Sprintf("%s = $%d", k, cnt))
+// 			vals = append(vals, v)
+// 			cnt++
+// 		}
+// 		vals = append(vals, key)
 
-		updates = append(updates, fmt.Sprintf("UPDATE cert_store SET %s WHERE key = $%d", strings.Join(sets, ", "), cnt))
-		valvals = append(valvals, vals)
+// 		updates = append(updates, fmt.Sprintf("UPDATE cert_store SET %s WHERE key = $%d", strings.Join(sets, ", "), cnt))
+// 		valvals = append(valvals, vals)
 
-		processed++
-	}
-	rows.Close()
+// 		processed++
+// 	}
+// 	rows.Close()
 
-	for i := 0; i < processed; i++ {
-		_, err = tx.Exec(updates[i], valvals[i]...)
-		if err != nil {
-			return err
-		}
-	}
+// 	for i := 0; i < processed; i++ {
+// 		_, err = tx.Exec(updates[i], valvals[i]...)
+// 		if err != nil {
+// 			return err
+// 		}
+// 	}
 
-	logger.Printf("Updated %d records", processed)
+// 	logger.Printf("Updated %d records", processed)
 
-	// If we got any, try again
-	if processed > 0 {
-		err = tx.Commit()
-		if err != nil {
-			return err
-		}
+// 	// If we got any, try again
+// 	if processed > 0 {
+// 		err = tx.Commit()
+// 		if err != nil {
+// 			return err
+// 		}
 
-		return ErrImmediateReschedule
-	}
+// 		return ErrImmediateReschedule
+// 	}
 
-	// Returning nil will commit and reschedule via cron
-	return nil
-}
+// 	// Returning nil will commit and reschedule via cron
+// 	return nil
+// }
 
 func GetEntries(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) error {
 	var md GetEntriesConf
