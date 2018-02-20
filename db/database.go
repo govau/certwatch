@@ -128,13 +128,12 @@ func GetPGXPool(maxConns int) (*pgx.ConnPool, error) {
 				);
 					
 				CREATE TABLE IF NOT EXISTS cert_store (
-					key          bytea         PRIMARY KEY,
-					leaf         bytea         NOT NULL
+					key              bytea                     PRIMARY KEY,
+					leaf             bytea                     NOT NULL,
+					not_valid_before timestamp with time zone,
+					not_valid_after  timestamp with time zone,
+					issuer_cn        text
 				);
-
-				ALTER TABLE cert_store ADD COLUMN IF NOT EXISTS not_valid_before timestamp with time zone;
-				ALTER TABLE cert_store ADD COLUMN IF NOT EXISTS not_valid_after  timestamp with time zone;
-				ALTER TABLE cert_store ADD COLUMN IF NOT EXISTS issuer_cn        text;
 
 				CREATE TABLE IF NOT EXISTS cert_index (
 					key          bytea         NOT NULL,
