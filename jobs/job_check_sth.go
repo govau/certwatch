@@ -40,7 +40,7 @@ func CheckLogSTH(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) e
 
 	// Don't reschedule us as a cron please.
 	if state != StateActive {
-		return ErrDoNotReschedule
+		return ErrDidNotReschedule
 	}
 
 	lc, err := ctclient.New(fmt.Sprintf("https://%s", md.URL), http.DefaultClient, ctjsonclient.Options{Logger: logger})

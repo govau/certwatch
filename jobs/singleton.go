@@ -11,9 +11,14 @@ import (
 
 var (
 	ErrImmediateReschedule = errors.New("commit tx, and reschedule ASAP")
-	ErrDoNotReschedule     = errors.New("no need to reschedule, we are done")
+	ErrDidNotReschedule    = errors.New("no need to reschedule, we are done")
 )
 
+// JobFunc should do a thing. Return either:
+// nil => wrapper will schedule the next cron (if a cron), then commit the tx.
+// ErrImmediateReschedule => wrapper will commit the tx, then try it again immediately.
+// ErrDidNotReschedule => wrapper will rollback the tx, and if a cron, will not reschedule or retry.
+// any other error => wrapper rollback the tx, and allow que to reschedule
 type JobFunc func(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) error
 
 type JobFuncWrapper struct {
@@ -24,7 +29,7 @@ type JobFuncWrapper struct {
 	Duration  time.Duration
 }
 
-// Return should continue, error
+// Return should continue, error. Never returns True if an error returns
 func (scw *JobFuncWrapper) ensureNooneElseRunning(job *que.Job, tx *pgx.Tx, key string) (bool, error) {
 	var lastCompleted time.Time
 	var nextScheduled time.Time
@@ -35,38 +40,28 @@ func (scw *JobFuncWrapper) ensureNooneElseRunning(job *que.Job, tx *pgx.Tx, key 
 			if err != nil {
 				return false, err
 			}
-			err = tx.Commit()
-			if err != nil {
-				return false, err
-			}
 			return false, ErrImmediateReschedule
 		}
 		return false, err
 	}
 
-	scw.Logger.Println("got mutex", job.ID)
 	if time.Now().Before(nextScheduled) {
 		var futureJobs int
-		err = tx.QueryRow("SELECT count(*) FROM que_jobs WHERE job_class = $1 AND args::jsonb = $2::jsonb AND run_at >= $3", job.Type, job.Args, nextScheduled).Scan(&futureJobs)
+		// make sure we don't regard ourself as a future job. Sometimes clock skew makes us think we can't run yet.
+		err = tx.QueryRow("SELECT count(*) FROM que_jobs WHERE job_class = $1 AND args::jsonb = $2::jsonb AND run_at >= $3 AND job_id != $4", job.Type, job.Args, nextScheduled, job.ID).Scan(&futureJobs)
 		if err != nil {
 			return false, err
 		}
 
 		if futureJobs > 0 {
-			scw.Logger.Println("Enough future jobs already scheduled.", job.ID)
 			return false, nil
 		}
 
-		scw.Logger.Println("No future jobs found, scheduling one to match end time", job.ID)
-		err = scw.QC.EnqueueInTx(&que.Job{
+		return false, scw.QC.EnqueueInTx(&que.Job{
 			Type:  job.Type,
 			Args:  job.Args,
 			RunAt: nextScheduled,
 		}, tx)
-		if err != nil {
-			return false, err
-		}
-		return false, tx.Commit()
 	}
 
 	// Continue
@@ -98,41 +93,65 @@ func (scw *JobFuncWrapper) scheduleJobLater(job *que.Job, tx *pgx.Tx, key string
 func (scw *JobFuncWrapper) Run(job *que.Job) error {
 	for {
 		err := scw.tryRun(job)
-		if err != ErrImmediateReschedule {
+		switch err {
+		case nil:
+			return nil
+		case ErrImmediateReschedule:
+			scw.Logger.Printf("RESCHEDULE REQUESTED, RESTARTING... %s%s (%d)", job.Type, job.Args, job.ID)
+			continue
+		case ErrDidNotReschedule:
+			scw.Logger.Printf("CRON JOB FINISHED AND HAS REQUESTED NOT TO BE RESCHEDULED %s%s (%d)", job.Type, job.Args, job.ID)
+			return nil
+		default:
+			scw.Logger.Printf("FAILED WITH ERROR, RELY ON QUE TO RESCHEDULE %s%s (%d): %s", job.Type, job.Args, job.ID, err)
 			return err
 		}
 	}
 }
 
+// This job manages the tx, no one else should commit or rollback
 func (scw *JobFuncWrapper) tryRun(job *que.Job) error {
+	scw.Logger.Printf("START %s%s (%d)", job.Type, job.Args, job.ID)
+	defer scw.Logger.Printf("STOP %s%s (%d)", job.Type, job.Args, job.ID)
+
 	tx, err := job.Conn().Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	scw.Logger.Println("starting", job.ID)
-	defer scw.Logger.Println("stop", job.ID)
-
 	key := job.Type + string(job.Args)
 	if scw.Singleton {
 		carryOn, err := scw.ensureNooneElseRunning(job, tx, key)
-		if err != nil {
-			return err
-		}
-
-		// If we are running ahead of schedule, see ya later.
 		if !carryOn {
-			return nil
+			// We are not carrying on, check the error codes.
+			switch err {
+			case nil:
+				return tx.Commit()
+			case ErrImmediateReschedule:
+				// We commit, but propagate the error code
+				err = tx.Commit()
+				if err != nil {
+					return err
+				}
+				return ErrImmediateReschedule
+			default:
+				return err
+			}
 		}
 	}
 
 	err = scw.F(scw.QC, scw.Logger, job, tx)
-	if err != nil {
-		if err == ErrDoNotReschedule {
-			scw.Logger.Println("job has requested to NOT be rescheduled", job.ID)
-			return nil
+	switch err {
+	case nil:
+		// continue, we commit later
+	case ErrImmediateReschedule:
+		err = tx.Commit()
+		if err != nil {
+			return err
 		}
+		return ErrImmediateReschedule
+	default:
 		return err
 	}
 

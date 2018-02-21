@@ -121,11 +121,6 @@ func getFieldsAndValsForCert(leaf *ct.MerkleTreeLeaf) map[string]interface{} {
 
 // 	// If we got any, try again
 // 	if processed > 0 {
-// 		err = tx.Commit()
-// 		if err != nil {
-// 			return err
-// 		}
-
 // 		return ErrImmediateReschedule
 // 	}
 
