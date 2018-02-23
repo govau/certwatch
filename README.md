@@ -5,7 +5,12 @@ docker run -p 5434:5432 --name certpg -e POSTGRES_USER=certpg -e POSTGRES_PASSWO
 
 export VCAP_APPLICATION='{}'
 export VCAP_SERVICES='{"postgres": [{"credentials": {"username": "certpg", "host": "localhost", "password": "certpg", "name": "certpg", "port": 5434}, "tags": ["postgres"]}]}'
-go run *.go
+
+# Optional
+export SLACK_HOOK="https://hooks.slack.com/services/xxx"
+export BASE_METRICS_URL="http://localhost:4323"
+
+go run cmd/certwatch/main.go
 ```
 
 To checkout database:
@@ -18,6 +23,7 @@ Build and push:
 
 ```bash
 cfy create-service postgres 9.6-5G govaucerts
+cfy create-user-provided-service certwatch-ups -p '{"SLACK_HOOK":"https://hooks.slack.com/services/xxx","BASE_METRICS_URL":"https://certmetrics.y.cld.gov.au"}'
 
 # Build and push
 dep ensure

@@ -10,9 +10,11 @@ import (
 	"time"
 
 	"github.com/bgentry/que-go"
+	cfenv "github.com/cloudfoundry-community/go-cfenv"
 
 	"github.com/govau/certwatch/db"
 	"github.com/govau/certwatch/jobs"
+	"github.com/govau/cf-common/env"
 )
 
 const (
@@ -20,6 +22,15 @@ const (
 )
 
 func main() {
+	app, err := cfenv.Current()
+	if err != nil {
+		log.Fatal(err)
+	}
+	envLookup := env.NewVarSet(
+		env.WithOSLookup(), // Always look in the OS env first.
+		env.WithUPSLookup(app, "certwatch-ups"),
+	)
+
 	pgxPool, err := db.GetPGXPool(WorkerCount * 2)
 	if err != nil {
 		log.Fatal(err)
@@ -50,6 +61,14 @@ func main() {
 			QC:     qc,
 			Logger: log.New(os.Stderr, jobs.KeyGetEntries+" ", log.LstdFlags),
 			F:      jobs.GetEntries,
+		}).Run,
+		jobs.KeyUpdateSlack: (&jobs.JobFuncWrapper{
+			QC:     qc,
+			Logger: log.New(os.Stderr, jobs.KeyUpdateSlack+" ", log.LstdFlags),
+			F: (&jobs.UpdateSlack{
+				Hook:    envLookup.String("SLACK_HOOK", ""),
+				BaseURL: envLookup.String("BASE_METRICS_URL", ""),
+			}).Run,
 		}).Run,
 		// Data migration job
 		// jobs.KeyFixMetadata1: (&jobs.JobFuncWrapper{

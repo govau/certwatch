@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -214,19 +215,45 @@ func GetEntries(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) er
 			fields := []string{"key", "leaf"}
 			ph := []string{"$1", "$2"}
 			vals := []interface{}{kh[:], certToStore}
+			var issuer string
 			for k, v := range getFieldsAndValsForCert(&leaf) {
 				fields = append(fields, k)
 				ph = append(ph, fmt.Sprintf("$%d", len(ph)+1))
 				vals = append(vals, v)
+				if k == "issuer_cn" {
+					issuer = v.(string)
+				}
 			}
 
-			_, err = tx.Exec(fmt.Sprintf("INSERT INTO cert_store (%s) VALUES (%s) ON CONFLICT DO NOTHING", strings.Join(fields, ", "), strings.Join(ph, ", ")), vals...)
+			rows, err := tx.Query(fmt.Sprintf("INSERT INTO cert_store (%s) VALUES (%s) ON CONFLICT DO NOTHING RETURNING key", strings.Join(fields, ", "), strings.Join(ph, ", ")), vals...)
 			if err != nil {
 				return err
 			}
+			didInsert := rows.Next()
+			rows.Close()
 
+			var domList []string
 			for dom := range doms {
 				_, err = tx.Exec("INSERT INTO cert_index (key, domain) VALUES ($1, $2) ON CONFLICT DO NOTHING", kh[:], dom)
+				if err != nil {
+					return err
+				}
+				domList = append(domList, dom)
+			}
+
+			if didInsert {
+				bb, err := json.Marshal(&UpdateSlackConf{
+					Key:     base64.RawURLEncoding.EncodeToString(kh[:]),
+					Domains: domList,
+					Issuer:  issuer,
+				})
+				if err != nil {
+					return err
+				}
+				err = qc.EnqueueInTx(&que.Job{
+					Type: KeyUpdateSlack,
+					Args: bb,
+				}, tx)
 				if err != nil {
 					return err
 				}

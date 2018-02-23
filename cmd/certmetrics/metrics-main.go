@@ -1,16 +1,25 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/jackc/pgx"
+
+	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/govau/certwatch/db"
+
+	ct "github.com/google/certificate-transparency-go"
+	cttls "github.com/google/certificate-transparency-go/tls"
+	ctx509 "github.com/google/certificate-transparency-go/x509"
+	"github.com/google/certificate-transparency-go/x509util"
 )
 
 var (
@@ -60,52 +69,50 @@ func init() {
 	prometheus.MustRegister(activeCerts)
 }
 
-func updateStatLoop() {
-	pgxPool, err := db.GetPGXPool(1)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer pgxPool.Close()
+type server struct {
+	DB *pgx.ConnPool
+}
 
+func (s *server) updateStatLoop() {
 	for {
 		var i int
 
-		err := pgxPool.QueryRow("SELECT COUNT(*) FROM que_jobs").Scan(&i)
+		err := s.DB.QueryRow("SELECT COUNT(*) FROM que_jobs").Scan(&i)
 		if err != nil {
 			log.Println(err)
 		} else {
 			queJobs.Set(float64(i))
 		}
 
-		err = pgxPool.QueryRow("SELECT COUNT(*) FROM que_jobs WHERE error_count != 0").Scan(&i)
+		err = s.DB.QueryRow("SELECT COUNT(*) FROM que_jobs WHERE error_count != 0").Scan(&i)
 		if err != nil {
 			log.Println(err)
 		} else {
 			jobsWithErrors.Set(float64(i))
 		}
 
-		err = pgxPool.QueryRow("SELECT COUNT(*) FROM cert_index").Scan(&i)
+		err = s.DB.QueryRow("SELECT COUNT(*) FROM cert_index").Scan(&i)
 		if err != nil {
 			log.Println(err)
 		} else {
 			certsFound.Set(float64(i))
 		}
 
-		err = pgxPool.QueryRow("SELECT COUNT(*) FROM cert_store").Scan(&i)
+		err = s.DB.QueryRow("SELECT COUNT(*) FROM cert_store").Scan(&i)
 		if err != nil {
 			log.Println(err)
 		} else {
 			uniqueCertsFound.Set(float64(i))
 		}
 
-		err = pgxPool.QueryRow("SELECT COUNT(*) FROM monitored_logs").Scan(&i)
+		err = s.DB.QueryRow("SELECT COUNT(*) FROM monitored_logs").Scan(&i)
 		if err != nil {
 			log.Println(err)
 		} else {
 			activeLogsMonitored.Set(float64(i))
 		}
 
-		rows, err := pgxPool.Query(`SELECT l.processed, COALESCE(r.remaining, 0), l.url
+		rows, err := s.DB.Query(`SELECT l.processed, COALESCE(r.remaining, 0), l.url
 			FROM monitored_logs l
 			LEFT OUTER JOIN
 			(SELECT args->>'URL' url, SUM((args->>'End')::int - (args->>'Start')::int) remaining FROM que_jobs WHERE job_class = 'get_entries' GROUP BY url) r
@@ -129,7 +136,7 @@ func updateStatLoop() {
 			rows.Close()
 		}
 
-		rows, err = pgxPool.Query(`select issuer_cn, count(*) from cert_store where not_valid_after > now() and not_valid_before < now() group by issuer_cn`)
+		rows, err = s.DB.Query(`select issuer_cn, count(*) from cert_store where not_valid_after > now() and not_valid_before < now() group by issuer_cn`)
 		if err != nil {
 			log.Println(err)
 		} else {
@@ -151,11 +158,60 @@ func updateStatLoop() {
 	}
 }
 
+func (s *server) showCert(w http.ResponseWriter, r *http.Request) {
+	key, err := base64.RawURLEncoding.DecodeString(mux.Vars(r)["key"])
+	if err != nil {
+		http.Error(w, "Bad key", http.StatusBadRequest)
+		return
+	}
+
+	var data []byte
+	err = s.DB.QueryRow("SELECT leaf FROM cert_store WHERE key = $1", key).Scan(&data)
+	if err != nil {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+
+	var leaf ct.MerkleTreeLeaf
+	_, err = cttls.Unmarshal(data, &leaf)
+	if err != nil {
+		http.Error(w, "Bad data", http.StatusInternalServerError)
+		return
+	}
+
+	var cert *ctx509.Certificate
+	switch leaf.TimestampedEntry.EntryType {
+	case ct.X509LogEntryType:
+		cert, _ = leaf.X509Certificate()
+	case ct.PrecertLogEntryType:
+		cert, _ = leaf.Precertificate()
+	default:
+		http.Error(w, "Bad data - 1", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write([]byte(x509util.CertificateToString(cert)))
+}
+
 func main() {
-	go updateStatLoop()
+	pgxPool, err := db.GetPGXPool(5)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer pgxPool.Close()
+
+	s := &server{
+		DB: pgxPool,
+	}
+
+	go s.updateStatLoop()
 
 	log.Println("Started up... waiting for ctrl-C.")
 
-	http.Handle("/metrics", promhttp.Handler())
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", os.Getenv("PORT")), nil))
+	r := mux.NewRouter()
+	r.Handle("/metrics", promhttp.Handler())
+	r.HandleFunc("/cert/{key}", s.showCert)
+
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", os.Getenv("PORT")), r))
 }

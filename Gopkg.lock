@@ -49,9 +49,28 @@
     "jsonclient",
     "tls",
     "x509",
-    "x509/pkix"
+    "x509/pkix",
+    "x509util"
   ]
   revision = "686d1c84287487373dd38c9faaf05aa79acacf26"
+
+[[projects]]
+  name = "github.com/gorilla/context"
+  packages = ["."]
+  revision = "1ea25387ff6f684839d82767c1733ff4d4d15d0a"
+  version = "v1.1"
+
+[[projects]]
+  name = "github.com/gorilla/mux"
+  packages = ["."]
+  revision = "53c1911da2b537f792e7cafcb446b05ffe33b996"
+  version = "v1.6.1"
+
+[[projects]]
+  name = "github.com/govau/cf-common"
+  packages = ["env"]
+  revision = "dd26b329a4c3e57e839e005a9a7b5e1374e075a8"
+  version = "v0.0.3"
 
 [[projects]]
   name = "github.com/jackc/pgx"
@@ -141,6 +160,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "ebfdd507b75d22ffcc0b39515e3c9c16de42d4becbf7c453a5fee9526b732671"
+  inputs-digest = "06da6efb26c20aecb0c097647de1aa63bd0acdd7bc5d05ff18f8ad38efdb4f76"
   solver-name = "gps-cdcl"
   solver-version = 1

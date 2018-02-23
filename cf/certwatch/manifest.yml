@@ -4,5 +4,6 @@ disk_quota: 50M
 instances: 4
 services:
 - govaucerts
+- certwatch-ups
 applications:
 - name: certwatch
