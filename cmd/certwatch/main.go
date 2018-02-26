@@ -70,14 +70,12 @@ func main() {
 				BaseURL: envLookup.String("BASE_METRICS_URL", ""),
 			}).Run,
 		}).Run,
-		// Data migration job
-		// jobs.KeyFixMetadata1: (&jobs.JobFuncWrapper{
-		// 	QC:        qc,
-		// 	Logger:    log.New(os.Stderr, jobs.KeyFixMetadata1+" ", log.LstdFlags),
-		// 	F:         jobs.RefreshMetadata1ForEntries,
-		// 	Singleton: true,
-		// 	Duration:  time.Minute * 15,
-		// }).Run,
+		jobs.KeyUpdateMetadata: (&jobs.JobFuncWrapper{
+			QC:        qc,
+			Logger:    log.New(os.Stderr, jobs.KeyUpdateMetadata+" ", log.LstdFlags),
+			F:         jobs.RefreshMetadataForEntries,
+			Singleton: true,
+		}).Run,
 	}, WorkerCount)
 
 	// Prepare a shutdown function
@@ -105,6 +103,16 @@ func main() {
 
 	err = qc.Enqueue(&que.Job{
 		Type:  jobs.KeyUpdateLogs,
+		Args:  []byte("{}"),
+		RunAt: time.Now(),
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Handles migration
+	err = qc.Enqueue(&que.Job{
+		Type:  jobs.KeyUpdateMetadata,
 		Args:  []byte("{}"),
 		RunAt: time.Now(),
 	})

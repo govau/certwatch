@@ -22,11 +22,15 @@ var (
 type JobFunc func(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) error
 
 type JobFuncWrapper struct {
-	QC        *que.Client
-	Logger    *log.Logger
-	F         JobFunc
+	QC     *que.Client
+	Logger *log.Logger
+	F      JobFunc
+
+	// One will only be called at once
 	Singleton bool
-	Duration  time.Duration
+
+	// Will be rescheduled upon success
+	Duration time.Duration
 }
 
 // Return should continue, error. Never returns True if an error returns
@@ -155,7 +159,7 @@ func (scw *JobFuncWrapper) tryRun(job *que.Job) error {
 		return err
 	}
 
-	if scw.Singleton {
+	if scw.Singleton && scw.Duration != 0 {
 		err = scw.scheduleJobLater(job, tx, key)
 		if err != nil {
 			return err

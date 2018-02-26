@@ -54,7 +54,7 @@ var (
 	activeCerts = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "active_certificates",
 		Help: "active certs (not expired)",
-	}, []string{"issuer"})
+	}, []string{"issuer", "jurisdiction", "cdn"})
 )
 
 func init() {
@@ -136,20 +136,20 @@ func (s *server) updateStatLoop() {
 			rows.Close()
 		}
 
-		rows, err = s.DB.Query(`select issuer_cn, count(*) from cert_store where not_valid_after > now() and not_valid_before < now() group by issuer_cn`)
+		rows, err = s.DB.Query(`select issuer_cn, jurisdiction, cdn, count(*) from cert_store where not_valid_after > now() and not_valid_before < now() group by issuer_cn, jurisdiction, cdn`)
 		if err != nil {
 			log.Println(err)
 		} else {
 			// TODO - if we now have zero, we'll get no results, and no way to delete the metric from prom?
 			for rows.Next() {
 				var count int64
-				var issuer string
-				err = rows.Scan(&issuer, &count)
+				var issuer, jurisdiction, cdn string
+				err = rows.Scan(&issuer, &jurisdiction, &cdn, &count)
 				if err != nil {
 					log.Println(err)
 					break
 				}
-				activeCerts.With(prometheus.Labels{"issuer": issuer}).Set(float64(count))
+				activeCerts.With(prometheus.Labels{"issuer": issuer, "jurisdiction": jurisdiction, "cdn": cdn}).Set(float64(count))
 			}
 			rows.Close()
 		}

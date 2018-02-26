@@ -27,8 +27,8 @@ type GetEntriesConf struct {
 }
 
 const (
-	KeyGetEntries = "get_entries"
-	// KeyFixMetadata1 = "fix_metadata_1"
+	KeyGetEntries     = "get_entries"
+	KeyUpdateMetadata = "update_metadata"
 
 	DomainSuffix = ".gov.au"
 	MatchDomain  = "gov.au"
@@ -44,6 +44,26 @@ func minInt64(a, b int64) int64 {
 	}
 	return b
 }
+
+var (
+	Jurisdictions = map[string]string{
+		"TAS": "tas.gov.au",
+		"VIC": "vic.gov.au",
+		"NSW": "nsw.gov.au",
+		"QLD": "qld.gov.au",
+		"WA":  "wa.gov.au",
+		"SA":  "sa.gov.au",
+		"NT":  "nt.gov.au",
+		"ACT": "act.gov.au",
+	}
+
+	CDNs = map[string]string{
+		"cloudflaressl": "CloudFlare",
+		"incapsula":     "Incapsula",
+		"fastly":        "Fastly",
+		"pantheonsite":  "PantheonSite",
+	}
+)
 
 // Extract metadata for cert
 func getFieldsAndValsForCert(leaf *ct.MerkleTreeLeaf) map[string]interface{} {
@@ -63,71 +83,103 @@ func getFieldsAndValsForCert(leaf *ct.MerkleTreeLeaf) map[string]interface{} {
 		issuer = cert.Issuer.CommonName
 	}
 
+	var jurisdiction string
+	for _, dom := range cert.DNSNames {
+		for k, j := range Jurisdictions {
+			if strings.HasSuffix(dom, "."+j) || dom == j {
+				if jurisdiction == "" {
+					jurisdiction = k
+				} else {
+					jurisdiction = "MIXED"
+				}
+			}
+		}
+	}
+	if jurisdiction == "" {
+		jurisdiction = "OTHER"
+	}
+
+	var cdn string
+	for k, c := range CDNs {
+		if strings.Index(cert.Subject.CommonName, k) >= 0 {
+			if cdn == "" {
+				cdn = c
+			} else {
+				cdn = "MIXED"
+			}
+		}
+	}
+	if cdn == "" {
+		cdn = "NOT RECOGNIZED CDN"
+	}
+
 	return map[string]interface{}{
 		"not_valid_after":  nva,
 		"not_valid_before": nvb,
 		"issuer_cn":        issuer,
+		"jurisdiction":     jurisdiction,
+		"cdn":              cdn,
+		"needs_update":     false,
 	}
 }
 
-// The following was a once-off for data migration. A similar pattern may be needed in the future.
-// func RefreshMetadata1ForEntries(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) error {
-// 	processed := 0
-// 	rows, err := tx.Query("SELECT key, leaf FROM cert_store WHERE issuer_cn IS NULL LIMIT $1", MaxToUpdate)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer rows.Close()
+func RefreshMetadataForEntries(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) error {
+	processed := 0
+	rows, err := tx.Query("SELECT key, leaf FROM cert_store WHERE needs_update = TRUE LIMIT $1", MaxToUpdate)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
 
-// 	var updates []string
-// 	var valvals [][]interface{}
-// 	for rows.Next() {
-// 		var key, leafData []byte
-// 		err = rows.Scan(&key, &leafData)
-// 		if err != nil {
-// 			return err
-// 		}
+	var updates []string
+	var valvals [][]interface{}
+	for rows.Next() {
+		var key, leafData []byte
+		err = rows.Scan(&key, &leafData)
+		if err != nil {
+			return err
+		}
 
-// 		var leaf ct.MerkleTreeLeaf
-// 		_, err := cttls.Unmarshal(leafData, &leaf)
-// 		if err != nil {
-// 			return err
-// 		}
+		var leaf ct.MerkleTreeLeaf
+		_, err := cttls.Unmarshal(leafData, &leaf)
+		if err != nil {
+			return err
+		}
 
-// 		var sets []string
-// 		var vals []interface{}
-// 		cnt := 1
-// 		for k, v := range getFieldsAndValsForCert(&leaf) {
-// 			sets = append(sets, fmt.Sprintf("%s = $%d", k, cnt))
-// 			vals = append(vals, v)
-// 			cnt++
-// 		}
-// 		vals = append(vals, key)
+		var sets []string
+		var vals []interface{}
+		cnt := 1
+		for k, v := range getFieldsAndValsForCert(&leaf) {
+			sets = append(sets, fmt.Sprintf("%s = $%d", k, cnt))
+			vals = append(vals, v)
+			cnt++
+		}
+		vals = append(vals, key)
 
-// 		updates = append(updates, fmt.Sprintf("UPDATE cert_store SET %s WHERE key = $%d", strings.Join(sets, ", "), cnt))
-// 		valvals = append(valvals, vals)
+		updates = append(updates, fmt.Sprintf("UPDATE cert_store SET %s WHERE key = $%d", strings.Join(sets, ", "), cnt))
+		valvals = append(valvals, vals)
 
-// 		processed++
-// 	}
-// 	rows.Close()
+		processed++
+	}
+	rows.Close()
 
-// 	for i := 0; i < processed; i++ {
-// 		_, err = tx.Exec(updates[i], valvals[i]...)
-// 		if err != nil {
-// 			return err
-// 		}
-// 	}
+	for i := 0; i < processed; i++ {
+		_, err = tx.Exec(updates[i], valvals[i]...)
+		if err != nil {
+			return err
+		}
+	}
 
-// 	logger.Printf("Updated %d records", processed)
+	logger.Printf("Updated %d records", processed)
 
-// 	// If we got any, try again
-// 	if processed > 0 {
-// 		return ErrImmediateReschedule
-// 	}
+	// If we got any, try again
+	if processed > 0 {
+		return ErrImmediateReschedule
+	}
 
-// 	// Returning nil will commit and reschedule via cron
-// 	return nil
-// }
+	// Returning nil will commit and reschedule via cron
+	return nil
+}
 
 func GetEntries(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) error {
 	var md GetEntriesConf

@@ -23,12 +23,15 @@ Build and push:
 
 ```bash
 cfy create-service postgres 9.6-5G govaucerts
-cfy create-user-provided-service certwatch-ups -p '{"SLACK_HOOK":"https://hooks.slack.com/services/xxx","BASE_METRICS_URL":"https://certmetrics.y.cld.gov.au"}'
+cfy create-user-provided-service certwatch-ups -p '{"SLACK_HOOK":"https://hooks.slack.com/services/xxx","BASE_METRICS_URL":"https://certmetrics.apps.y.cld.gov.au"}'
 
 # Build and push
 dep ensure
 GOOS=linux GOARCH=amd64 go build -o cf/certwatch/certwatch cmd/certwatch/main.go
 cfy push -f cf/certwatch/manifest.yml -p cf/certwatch
+
+# Tell it to update via: update cert_store set needs_update=true
+cfy restart certwatch
 
 # Metrics
 GOOS=linux GOARCH=amd64 go build -o cf/certmetrics/certmetrics cmd/certmetrics/metrics-main.go

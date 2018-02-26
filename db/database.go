@@ -83,6 +83,15 @@ func (dbi *DBInitter) AfterConnect(c *pgx.Conn) error {
 	return nil
 }
 
+/*
+	# Sample database update commands
+
+    ALTER TABLE cert_store ADD COLUMN IF NOT EXISTS jurisdiction text;
+    ALTER TABLE cert_store ADD COLUMN IF NOT EXISTS cdn text;
+	ALTER TABLE cert_store ADD COLUMN IF NOT EXISTS discovered timestamptz NOT NULL DEFAULT now();
+	ALTER TABLE cert_store ADD COLUMN IF NOT EXISTS needs_update boolean;
+*/
+
 func GetPGXPool(maxConns int) (*pgx.ConnPool, error) {
 	creds, err := postgresCredsFromCF()
 	if err != nil {
@@ -132,13 +141,16 @@ func GetPGXPool(maxConns int) (*pgx.ConnPool, error) {
 					leaf             bytea                     NOT NULL,
 					not_valid_before timestamp with time zone,
 					not_valid_after  timestamp with time zone,
-					issuer_cn        text
+					issuer_cn        text,
+					jurisdiction     text,
+					cdn              text,
+					needs_update     boolean,
+					discovered       timestamptz               NOT NULL DEFAULT now()
 				);
 
 				CREATE TABLE IF NOT EXISTS cert_index (
 					key          bytea         NOT NULL,
 					domain       text          NOT NULL,
-					discovered   timestamptz   NOT NULL DEFAULT now(),
 
 					CONSTRAINT cert_index_pkey PRIMARY KEY (key, domain)
 				);
