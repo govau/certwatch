@@ -51,10 +51,14 @@ var (
 		Name: "active_logs_monitored",
 		Help: "Total active logs monitored",
 	})
-	activeCerts = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "active_certificates",
-		Help: "active certs (not expired)",
-	}, []string{"issuer", "jurisdiction", "cdn"})
+	activeCertsByCDN = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "active_certs_by_cdn",
+		Help: "active certs by cdn (not expired)",
+	}, []string{"jurisdiction", "cdn"})
+	activeCertsByIssuer = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "active_certs_by_issuer",
+		Help: "active certs by issuer (not expired)",
+	}, []string{"jurisdiction", "issuer"})
 )
 
 func init() {
@@ -66,7 +70,8 @@ func init() {
 	prometheus.MustRegister(certsFound)
 	prometheus.MustRegister(uniqueCertsFound)
 	prometheus.MustRegister(activeLogsMonitored)
-	prometheus.MustRegister(activeCerts)
+	prometheus.MustRegister(activeCertsByCDN)
+	prometheus.MustRegister(activeCertsByIssuer)
 }
 
 type server struct {
@@ -136,20 +141,38 @@ func (s *server) updateStatLoop() {
 			rows.Close()
 		}
 
-		rows, err = s.DB.Query(`select issuer_cn, jurisdiction, cdn, count(*) from cert_store where not_valid_after > now() and not_valid_before < now() group by issuer_cn, jurisdiction, cdn`)
+		rows, err = s.DB.Query(`select jurisdiction, cdn, count(*) from cert_store where not_valid_after > now() and not_valid_before < now() group by jurisdiction, cdn`)
 		if err != nil {
 			log.Println(err)
 		} else {
 			// TODO - if we now have zero, we'll get no results, and no way to delete the metric from prom?
 			for rows.Next() {
 				var count int64
-				var issuer, jurisdiction, cdn string
-				err = rows.Scan(&issuer, &jurisdiction, &cdn, &count)
+				var jurisdiction, cdn string
+				err = rows.Scan(&jurisdiction, &cdn, &count)
 				if err != nil {
 					log.Println(err)
 					break
 				}
-				activeCerts.With(prometheus.Labels{"issuer": issuer, "jurisdiction": jurisdiction, "cdn": cdn}).Set(float64(count))
+				activeCertsByCDN.With(prometheus.Labels{"jurisdiction": jurisdiction, "cdn": cdn}).Set(float64(count))
+			}
+			rows.Close()
+		}
+
+		rows, err = s.DB.Query(`select issuer_cn, jurisdiction, count(*) from cert_store where not_valid_after > now() and not_valid_before < now() group by issuer_cn, jurisdiction`)
+		if err != nil {
+			log.Println(err)
+		} else {
+			// TODO - if we now have zero, we'll get no results, and no way to delete the metric from prom?
+			for rows.Next() {
+				var count int64
+				var issuer, jurisdiction string
+				err = rows.Scan(&issuer, &jurisdiction, &count)
+				if err != nil {
+					log.Println(err)
+					break
+				}
+				activeCertsByIssuer.With(prometheus.Labels{"issuer": issuer, "jurisdiction": jurisdiction}).Set(float64(count))
 			}
 			rows.Close()
 		}
