@@ -126,6 +126,8 @@ func (s *server) updateStatLoop() {
 		if err != nil {
 			log.Println(err)
 		} else {
+			remainingEntries.Reset()
+			processedEntries.Reset()
 			for rows.Next() {
 				var processed, remaining int64
 				var url string
@@ -145,7 +147,7 @@ func (s *server) updateStatLoop() {
 		if err != nil {
 			log.Println(err)
 		} else {
-			// TODO - if we now have zero, we'll get no results, and no way to delete the metric from prom?
+			activeCertsByCDN.Reset()
 			for rows.Next() {
 				var count int64
 				var jurisdiction, cdn string
@@ -163,7 +165,7 @@ func (s *server) updateStatLoop() {
 		if err != nil {
 			log.Println(err)
 		} else {
-			// TODO - if we now have zero, we'll get no results, and no way to delete the metric from prom?
+			activeCertsByIssuer.Reset()
 			for rows.Next() {
 				var count int64
 				var issuer, jurisdiction string
