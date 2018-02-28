@@ -87,9 +87,12 @@ func getFieldsAndValsForCert(leaf *ct.MerkleTreeLeaf) map[string]interface{} {
 	for _, dom := range cert.DNSNames {
 		for k, j := range Jurisdictions {
 			if strings.HasSuffix(dom, "."+j) || dom == j {
-				if jurisdiction == "" {
+				switch jurisdiction {
+				case "":
 					jurisdiction = k
-				} else {
+				case k:
+					continue
+				default:
 					jurisdiction = "MIXED"
 				}
 			}
