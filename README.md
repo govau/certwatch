@@ -30,8 +30,11 @@ dep ensure
 GOOS=linux GOARCH=amd64 go build -o cf/certwatch/certwatch cmd/certwatch/main.go
 cfy push -f cf/certwatch/manifest.yml -p cf/certwatch
 
-# Tell it to update via: update cert_store set needs_update=true
+# Tell it to update:
+# update cert_store set needs_update=true
+# insert into que_jobs(job_class,args) values('update_metadata','{}')
 cfy restart certwatch
+
 
 # Metrics
 GOOS=linux GOARCH=amd64 go build -o cf/certmetrics/certmetrics cmd/certmetrics/metrics-main.go
