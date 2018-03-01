@@ -312,6 +312,20 @@ func GetEntries(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) er
 				if err != nil {
 					return err
 				}
+
+				bb, err = json.Marshal(&UpdateDataGovAUConf{
+					Data: certToStore,
+				})
+				if err != nil {
+					return err
+				}
+				err = qc.EnqueueInTx(&que.Job{
+					Type: KeyUpdateDataGovAU,
+					Args: bb,
+				}, tx)
+				if err != nil {
+					return err
+				}
 			}
 		}
 

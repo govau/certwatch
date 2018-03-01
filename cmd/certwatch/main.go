@@ -36,6 +36,12 @@ func main() {
 		log.Fatal(err)
 	}
 
+	dataGovAU := &jobs.UpdateDataGovAU{
+		APIKey:     envLookup.String("CKAN_API_KEY", ""),
+		BaseURL:    envLookup.String("CKAN_BASE_URL", "https://data.gov.au"),
+		ResourceID: envLookup.String("CKAN_RESOURCE_ID", ""),
+	}
+
 	qc := que.NewClient(pgxPool)
 	workers := que.NewWorkerPool(qc, que.WorkMap{
 		jobs.KeyUpdateLogs: (&jobs.JobFuncWrapper{
@@ -69,6 +75,16 @@ func main() {
 				Hook:    envLookup.String("SLACK_HOOK", ""),
 				BaseURL: envLookup.String("BASE_METRICS_URL", ""),
 			}).Run,
+		}).Run,
+		jobs.KeyUpdateDataGovAU: (&jobs.JobFuncWrapper{
+			QC:     qc,
+			Logger: log.New(os.Stderr, jobs.KeyUpdateDataGovAU+" ", log.LstdFlags),
+			F:      dataGovAU.Run,
+		}).Run,
+		jobs.KeyBackfillDataGovAU: (&jobs.JobFuncWrapper{
+			QC:     qc,
+			Logger: log.New(os.Stderr, jobs.KeyBackfillDataGovAU+" ", log.LstdFlags),
+			F:      dataGovAU.BackfillDataGovAU,
 		}).Run,
 		jobs.KeyUpdateMetadata: (&jobs.JobFuncWrapper{
 			QC:        qc,

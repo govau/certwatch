@@ -10,6 +10,11 @@ export VCAP_SERVICES='{"postgres": [{"credentials": {"username": "certpg", "host
 export SLACK_HOOK="https://hooks.slack.com/services/xxx"
 export BASE_METRICS_URL="http://localhost:4323"
 
+# Optional - send copy to a CKAN:
+export CKAN_API_KEY="xxx"
+export CKAN_RESOURCE_ID="xxx"
+export CKAN_BASE_URL="https://data.gov.au"
+
 go run cmd/certwatch/main.go
 ```
 
@@ -33,6 +38,8 @@ cfy push -f cf/certwatch/manifest.yml -p cf/certwatch
 # Tell it to update:
 # update cert_store set needs_update=true
 # insert into que_jobs(job_class,args) values('update_metadata','{}')
+# update cert_store set needs_ckan_backfill=true
+# insert into que_jobs(job_class,args) values('backfill_data_gov_au','{}')
 cfy restart certwatch
 
 

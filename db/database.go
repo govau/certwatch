@@ -89,7 +89,7 @@ func (dbi *DBInitter) AfterConnect(c *pgx.Conn) error {
     ALTER TABLE cert_store ADD COLUMN IF NOT EXISTS jurisdiction text;
     ALTER TABLE cert_store ADD COLUMN IF NOT EXISTS cdn text;
 	ALTER TABLE cert_store ADD COLUMN IF NOT EXISTS discovered timestamptz NOT NULL DEFAULT now();
-	ALTER TABLE cert_store ADD COLUMN IF NOT EXISTS needs_update boolean;
+	ALTER TABLE cert_store ADD COLUMN IF NOT EXISTS needs_ckan_backfill boolean;
 */
 
 func GetPGXPool(maxConns int) (*pgx.ConnPool, error) {
@@ -145,7 +145,8 @@ func GetPGXPool(maxConns int) (*pgx.ConnPool, error) {
 					jurisdiction     text,
 					cdn              text,
 					needs_update     boolean,
-					discovered       timestamptz               NOT NULL DEFAULT now()
+					discovered       timestamptz               NOT NULL DEFAULT now(),
+					needs_ckan_backfill boolean
 				);
 
 				CREATE TABLE IF NOT EXISTS cert_index (
