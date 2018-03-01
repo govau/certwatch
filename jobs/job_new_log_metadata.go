@@ -32,13 +32,13 @@ func NewLogMetadata(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx
 		return err
 	}
 
-	if (l.FinalSTH != nil || l.DisqualifiedAt != 0) && dbState == StateActive {
-		_, err = tx.Exec("UPDATE monitored_logs SET state = $1 WHERE url = $2", StateIgnore, l.URL)
-		if err != nil {
-			return err
-		}
-		dbState = StateIgnore
-	}
+	// if (l.FinalSTH != nil || l.DisqualifiedAt != 0) && dbState == StateActive {
+	// 	_, err = tx.Exec("UPDATE monitored_logs SET state = $1 WHERE url = $2", StateIgnore, l.URL)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	dbState = StateIgnore
+	// }
 
 	if dbState == StateActive {
 		bb, err := json.Marshal(&CheckSTHConf{URL: l.URL})
