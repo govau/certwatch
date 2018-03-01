@@ -142,28 +142,30 @@ type ckanRecord map[string]interface{}
 
 func (us *UpdateDataGovAU) InsertRecords(logger *log.Logger, recs []*ckanRecord) error {
 	payload, err := json.Marshal(&struct {
-		ResourceID string        `json:"resource_id"`
-		Fields     []ckanField   `json:"fields"`
-		PrimaryKey string        `json:"primary_key"`
-		Records    []*ckanRecord `json:"records"`
+		ResourceID string `json:"resource_id"`
+		//Fields     []ckanField   `json:"fields"`
+		//PrimaryKey string        `json:"primary_key"`
+		Records []*ckanRecord `json:"records"`
+		Method  string        `json:"method"`
 	}{
 		ResourceID: us.ResourceID,
-		Fields: []ckanField{
-			{ID: "key", Type: "text"},
-			{ID: "issuer_cn", Type: "text"},
-			{ID: "domains", Type: "text[]"},
-			{ID: "not_valid_before", Type: "timestamp"},
-			{ID: "not_valid_after", Type: "timestamp"},
-			{ID: "raw_data", Type: "text"},
-		},
-		PrimaryKey: "key",
-		Records:    recs,
+		// Fields: []ckanField{
+		// 	{ID: "key", Type: "text"},
+		// 	{ID: "issuer_cn", Type: "text"},
+		// 	{ID: "domains", Type: "text[]"},
+		// 	{ID: "not_valid_before", Type: "timestamp"},
+		// 	{ID: "not_valid_after", Type: "timestamp"},
+		// 	{ID: "raw_data", Type: "text"},
+		// },
+		// PrimaryKey: "key",
+		Records: recs,
+		Method:  "upsert",
 	})
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, us.BaseURL+"/api/3/action/datastore_create", bytes.NewReader(payload))
+	req, err := http.NewRequest(http.MethodPost, us.BaseURL+"/api/3/action/datastore_upsert", bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
