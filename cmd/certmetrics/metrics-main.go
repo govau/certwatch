@@ -117,28 +117,39 @@ func (s *server) updateStatLoop() {
 			activeLogsMonitored.Set(float64(i))
 		}
 
-		rows, err := s.DB.Query(`SELECT l.processed, COALESCE(r.remaining, 0), l.url
-			FROM monitored_logs l
-			LEFT OUTER JOIN
-			(SELECT args->>'URL' url, SUM((args->>'End')::int - (args->>'Start')::int) remaining FROM que_jobs WHERE job_class = 'get_entries' GROUP BY url) r
-			ON l.url = r.url
-		`)
+		rows, err := s.DB.Query(`SELECT l.processed, l.url FROM monitored_logs l`)
 		if err != nil {
 			log.Println(err)
 		} else {
-			remainingEntries.Reset()
 			processedEntries.Reset()
 			for rows.Next() {
-				var processed, remaining int64
+				var processed int64
 				var url string
-				err = rows.Scan(&processed, &remaining, &url)
+				err = rows.Scan(&processed, &url)
 				if err != nil {
 					log.Println(err)
 					break
 				}
 
+				processedEntries.With(prometheus.Labels{"log": url}).Set(float64(processed))
+			}
+			rows.Close()
+		}
+
+		rows, err = s.DB.Query(`SELECT args->>'URL' url, SUM((args->>'End')::int - (args->>'Start')::int) remaining FROM que_jobs WHERE job_class = 'get_entries' GROUP BY url`)
+		if err != nil {
+			log.Println(err)
+		} else {
+			remainingEntries.Reset()
+			for rows.Next() {
+				var remaining int64
+				var url string
+				err = rows.Scan(&url, &remaining)
+				if err != nil {
+					log.Println(err)
+					break
+				}
 				remainingEntries.With(prometheus.Labels{"log": url}).Set(float64(remaining))
-				processedEntries.With(prometheus.Labels{"log": url}).Set(float64(processed - remaining))
 			}
 			rows.Close()
 		}
