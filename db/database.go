@@ -89,7 +89,7 @@ func (dbi *DBInitter) AfterConnect(c *pgx.Conn) error {
     ALTER TABLE cert_store ADD COLUMN IF NOT EXISTS jurisdiction text;
     ALTER TABLE cert_store ADD COLUMN IF NOT EXISTS cdn text;
 	ALTER TABLE cert_store ADD COLUMN IF NOT EXISTS discovered timestamptz NOT NULL DEFAULT now();
-	ALTER TABLE cert_store ADD COLUMN IF NOT EXISTS needs_ckan_backfill boolean;
+	ALTER TABLE monitored_logs ADD COLUMN IF NOT EXISTS connect_url text;
 */
 
 func GetPGXPool(maxConns int) (*pgx.ConnPool, error) {
@@ -133,7 +133,8 @@ func GetPGXPool(maxConns int) (*pgx.ConnPool, error) {
 				CREATE TABLE IF NOT EXISTS monitored_logs (
 					url       text      PRIMARY KEY,
 					processed bigint    NOT NULL DEFAULT 0,
-					state     integer   NOT NULL DEFAULT 0
+					state     integer   NOT NULL DEFAULT 0,
+					connect_url text
 				);
 					
 				CREATE TABLE IF NOT EXISTS cert_store (

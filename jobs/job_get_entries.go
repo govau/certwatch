@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net/http"
 	"strings"
 	"time"
 
@@ -191,7 +190,8 @@ func GetEntries(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) er
 		return err
 	}
 
-	lc, err := ctclient.New(fmt.Sprintf("https://%s", md.URL), http.DefaultClient, ctjsonclient.Options{Logger: logger})
+	url, client := makeClientForURL(md.URL)
+	lc, err := ctclient.New(url, client, ctjsonclient.Options{Logger: logger})
 	if err != nil {
 		return err
 	}

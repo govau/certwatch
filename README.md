@@ -40,6 +40,8 @@ cfy push -f cf/certwatch/manifest.yml -p cf/certwatch
 # insert into que_jobs(job_class,args) values('update_metadata','{}')
 # update cert_store set needs_ckan_backfill=true
 # insert into que_jobs(job_class,args) values('backfill_data_gov_au','{}')
+#
+# To add a new job for processing: insert into que_jobs(job_class,args) values('new_log_metadata','{"url":"ct.googleapis.com/daedalus/"}') on conflict do nothing;
 cfy restart certwatch
 
 
