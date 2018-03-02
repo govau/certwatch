@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -55,10 +54,6 @@ func CheckLogSTH(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) e
 	err = tx.QueryRow("SELECT state, processed, connect_url FROM monitored_logs WHERE url = $1 FOR UPDATE", md.URL).Scan(&state, &processed, &connectURL)
 	if err != nil {
 		return err
-	}
-
-	if connectURL == "" {
-		connectURL = fmt.Sprintf("https://%s", md.URL)
 	}
 
 	// Don't reschedule us as a cron please.

@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 
 	que "github.com/bgentry/que-go"
@@ -23,7 +24,7 @@ func NewLogMetadata(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx
 	err = tx.QueryRow("SELECT state FROM monitored_logs WHERE url = $1 FOR UPDATE", l.URL).Scan(&dbState)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			_, err = tx.Exec("INSERT INTO monitored_logs (url) VALUES ($1)", l.URL)
+			_, err = tx.Exec("INSERT INTO monitored_logs (url, connect_url) VALUES ($1, $2)", l.URL, fmt.Sprintf("https://%s", l.URL))
 			if err != nil {
 				return err
 			}
