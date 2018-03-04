@@ -141,6 +141,7 @@ func (s *server) updateStatLoop() {
 			log.Println(err)
 		} else {
 			remainingEntries.Reset()
+			gotOne := false
 			for rows.Next() {
 				var remaining int64
 				var url string
@@ -150,6 +151,10 @@ func (s *server) updateStatLoop() {
 					break
 				}
 				remainingEntries.With(prometheus.Labels{"log": url}).Set(float64(remaining))
+				gotOne = true
+			}
+			if !gotOne {
+				remainingEntries.With(prometheus.Labels{"log": "none"}).Set(0.0)
 			}
 			rows.Close()
 		}
