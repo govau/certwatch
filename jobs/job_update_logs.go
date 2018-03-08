@@ -18,7 +18,7 @@ const (
 const (
 	KeyUpdateLogs = "cron_update_logs"
 
-	KnownLogsURL = "https://www.gstatic.com/ct/log_list/log_list.json"
+	KnownLogsURL = "https://www.gstatic.com/ct/log_list/all_logs_list.json"
 )
 
 type CTLog struct {
