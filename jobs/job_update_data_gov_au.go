@@ -15,6 +15,7 @@ import (
 	ct "github.com/google/certificate-transparency-go"
 	cttls "github.com/google/certificate-transparency-go/tls"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
+	"github.com/govau/cf-common/jobs"
 	"github.com/jackc/pgx"
 )
 
@@ -68,7 +69,7 @@ func (us *UpdateDataGovAU) BackfillDataGovAU(qc *que.Client, logger *log.Logger,
 
 	// If we got any, this will commit and try again
 	if processed > 0 {
-		return ErrImmediateReschedule
+		return jobs.ErrImmediateReschedule
 	}
 
 	// Returning nil will commit and reschedule via cron

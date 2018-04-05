@@ -11,6 +11,7 @@ import (
 	que "github.com/bgentry/que-go"
 	ctclient "github.com/google/certificate-transparency-go/client"
 	ctjsonclient "github.com/google/certificate-transparency-go/jsonclient"
+	"github.com/govau/cf-common/jobs"
 	"github.com/jackc/pgx"
 )
 
@@ -64,7 +65,7 @@ func CheckLogSTH(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) e
 
 	// Don't reschedule us as a cron please.
 	if state != StateActive {
-		return ErrDidNotReschedule
+		return jobs.ErrDidNotReschedule
 	}
 
 	url, client := makeClientForURL(connectURL)

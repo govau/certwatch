@@ -5,20 +5,16 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
+
+	"github.com/jackc/pgx"
 
 	"github.com/bgentry/que-go"
 	cfenv "github.com/cloudfoundry-community/go-cfenv"
 
-	"github.com/govau/certwatch/db"
 	"github.com/govau/certwatch/jobs"
 	"github.com/govau/cf-common/env"
-)
-
-const (
-	WorkerCount = 5
+	commonjobs "github.com/govau/cf-common/jobs"
 )
 
 func main() {
@@ -31,125 +27,114 @@ func main() {
 		env.WithUPSLookup(app, "certwatch-ups"),
 	)
 
-	pgxPool, err := db.GetPGXPool(WorkerCount * 2)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	dataGovAU := &jobs.UpdateDataGovAU{
 		APIKey:     envLookup.String("CKAN_API_KEY", ""),
 		BaseURL:    envLookup.String("CKAN_BASE_URL", "https://data.gov.au"),
 		ResourceID: envLookup.String("CKAN_RESOURCE_ID", ""),
 	}
 
-	qc := que.NewClient(pgxPool)
-	workers := que.NewWorkerPool(qc, que.WorkMap{
-		jobs.KeyUpdateLogs: (&jobs.JobFuncWrapper{
-			QC:        qc,
-			Logger:    log.New(os.Stderr, jobs.KeyUpdateLogs+" ", log.LstdFlags),
-			F:         jobs.UpdateCTLogList,
-			Singleton: true,
-			Duration:  time.Hour * 24,
-		}).Run,
-		jobs.KeyNewLogMetadata: (&jobs.JobFuncWrapper{
-			QC:     qc,
-			Logger: log.New(os.Stderr, jobs.KeyNewLogMetadata+" ", log.LstdFlags),
-			F:      jobs.NewLogMetadata,
-		}).Run,
-		jobs.KeyCheckSTH: (&jobs.JobFuncWrapper{
-			QC:        qc,
-			Logger:    log.New(os.Stderr, jobs.KeyCheckSTH+" ", log.LstdFlags),
-			F:         jobs.CheckLogSTH,
-			Singleton: true,
-			Duration:  time.Minute * 5,
-		}).Run,
-		jobs.KeyGetEntries: (&jobs.JobFuncWrapper{
-			QC:     qc,
-			Logger: log.New(os.Stderr, jobs.KeyGetEntries+" ", log.LstdFlags),
-			F:      jobs.GetEntries,
-		}).Run,
-		jobs.KeyUpdateSlack: (&jobs.JobFuncWrapper{
-			QC:     qc,
-			Logger: log.New(os.Stderr, jobs.KeyUpdateSlack+" ", log.LstdFlags),
-			F: (&jobs.UpdateSlack{
-				Hook:    envLookup.String("SLACK_HOOK", ""),
-				BaseURL: envLookup.String("BASE_METRICS_URL", ""),
-			}).Run,
-		}).Run,
-		jobs.KeyUpdateDataGovAU: (&jobs.JobFuncWrapper{
-			QC:     qc,
-			Logger: log.New(os.Stderr, jobs.KeyUpdateDataGovAU+" ", log.LstdFlags),
-			F:      dataGovAU.Run,
-		}).Run,
-		jobs.KeyBackfillDataGovAU: (&jobs.JobFuncWrapper{
-			QC:     qc,
-			Logger: log.New(os.Stderr, jobs.KeyBackfillDataGovAU+" ", log.LstdFlags),
-			F:      dataGovAU.BackfillDataGovAU,
-		}).Run,
-		jobs.KeyUpdateMetadata: (&jobs.JobFuncWrapper{
-			QC:        qc,
-			Logger:    log.New(os.Stderr, jobs.KeyUpdateMetadata+" ", log.LstdFlags),
-			F:         jobs.RefreshMetadataForEntries,
-			Singleton: true,
-		}).Run,
-	}, WorkerCount)
+	log.Fatal((&commonjobs.Handler{
+		PGXConnConfig: commonjobs.MustPGXConfigFromCloudFoundry(),
+		WorkerCount:   5,
+		WorkerMap: map[string]*commonjobs.JobConfig{
+			jobs.KeyUpdateLogs: &commonjobs.JobConfig{
+				F:         jobs.UpdateCTLogList,
+				Singleton: true,
+				Duration:  time.Hour * 24,
+			},
+			jobs.KeyNewLogMetadata: &commonjobs.JobConfig{
+				F: jobs.NewLogMetadata,
+			},
+			jobs.KeyCheckSTH: &commonjobs.JobConfig{
+				F:         jobs.CheckLogSTH,
+				Singleton: true,
+				Duration:  time.Minute * 5,
+			},
+			jobs.KeyGetEntries: &commonjobs.JobConfig{
+				F: jobs.GetEntries,
+			},
+			jobs.KeyUpdateSlack: &commonjobs.JobConfig{
+				F: (&jobs.UpdateSlack{
+					Hook:    envLookup.String("SLACK_HOOK", ""),
+					BaseURL: envLookup.String("BASE_METRICS_URL", ""),
+				}).Run,
+			},
+			jobs.KeyUpdateDataGovAU: &commonjobs.JobConfig{
+				F: dataGovAU.Run,
+			},
+			jobs.KeyBackfillDataGovAU: &commonjobs.JobConfig{
+				F: dataGovAU.BackfillDataGovAU,
+			},
+			jobs.KeyUpdateMetadata: &commonjobs.JobConfig{
+				F:         jobs.RefreshMetadataForEntries,
+				Singleton: true,
+			},
+		},
+		OnStart: func(qc *que.Client, pgxPool *pgx.ConnPool, logger *log.Logger) error {
+			err := qc.Enqueue(&que.Job{
+				Type:  jobs.KeyUpdateLogs,
+				Args:  []byte("{}"),
+				RunAt: time.Now(),
+			})
+			if err != nil {
+				return err
+			}
 
-	// Prepare a shutdown function
-	shutdown := func() {
-		workers.Shutdown()
-		pgxPool.Close()
-	}
+			// Handles migration
+			err = qc.Enqueue(&que.Job{
+				Type:  jobs.KeyUpdateMetadata,
+				Args:  []byte("{}"),
+				RunAt: time.Now(),
+			})
+			if err != nil {
+				return err
+			}
 
-	// Normal exit
-	defer shutdown()
+			logger.Println("Starting up... waiting for ctrl-C to stop.")
+			go http.ListenAndServe(fmt.Sprintf(":%s", os.Getenv("PORT")), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintf(w, "Healthy")
+			}))
 
-	// Or via signals
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt)
-	signal.Notify(sigCh, syscall.SIGTERM)
-	go func() {
-		sig := <-sigCh
-		log.Printf("Received %v, starting shutdown...", sig)
-		shutdown()
-		log.Println("Shutdown complete")
-		os.Exit(0)
-	}()
+			return nil
+		},
+		InitSQL: `
+			CREATE TABLE IF NOT EXISTS cron_metadata (
+				id             text                     PRIMARY KEY,
+				last_completed timestamp with time zone NOT NULL DEFAULT TIMESTAMP 'EPOCH',
+				next_scheduled timestamp with time zone NOT NULL DEFAULT TIMESTAMP 'EPOCH'
+			);
 
-	go workers.Start()
+			CREATE TABLE IF NOT EXISTS monitored_logs (
+				url       text      PRIMARY KEY,
+				processed bigint    NOT NULL DEFAULT 0,
+				state     integer   NOT NULL DEFAULT 0,
+				connect_url text
+			);
 
-	err = qc.Enqueue(&que.Job{
-		Type:  jobs.KeyUpdateLogs,
-		Args:  []byte("{}"),
-		RunAt: time.Now(),
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
+			CREATE TABLE IF NOT EXISTS cert_store (
+				key              bytea                     PRIMARY KEY,
+				leaf             bytea                     NOT NULL,
+				not_valid_before timestamp with time zone,
+				not_valid_after  timestamp with time zone,
+				issuer_cn        text,
+				jurisdiction     text,
+				cdn              text,
+				needs_update     boolean,
+				discovered       timestamptz               NOT NULL DEFAULT now(),
+				needs_ckan_backfill boolean
+			);
 
-	// Handles migration
-	err = qc.Enqueue(&que.Job{
-		Type:  jobs.KeyUpdateMetadata,
-		Args:  []byte("{}"),
-		RunAt: time.Now(),
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
+			CREATE TABLE IF NOT EXISTS cert_index (
+				key          bytea         NOT NULL,
+				domain       text          NOT NULL,
 
-	// Was used for data migration, no longer needed
-	// err = qc.Enqueue(&que.Job{
-	// 	Type:  jobs.KeyFixMetadata1,
-	// 	Args:  []byte("{}"),
-	// 	RunAt: time.Now(),
-	// })
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
+				CONSTRAINT cert_index_pkey PRIMARY KEY (key, domain)
+			);
 
-	log.Println("Started up... waiting for ctrl-C.")
-
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Up and away.")
-	})
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", os.Getenv("PORT")), nil))
+			CREATE TABLE IF NOT EXISTS error_log (
+				discovered   timestamptz   NOT NULL DEFAULT now(),
+				error        text          NOT NULL
+			);
+		`,
+	}).WorkForever())
 }

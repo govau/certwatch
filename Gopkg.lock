@@ -67,10 +67,13 @@
   version = "v1.6.1"
 
 [[projects]]
+  branch = "master"
   name = "github.com/govau/cf-common"
-  packages = ["env"]
-  revision = "dd26b329a4c3e57e839e005a9a7b5e1374e075a8"
-  version = "v0.0.3"
+  packages = [
+    "env",
+    "jobs"
+  ]
+  revision = "3d5ef580616adc865693ab62a8785c5f5a9d0e84"
 
 [[projects]]
   name = "github.com/jackc/pgx"
@@ -160,6 +163,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "06da6efb26c20aecb0c097647de1aa63bd0acdd7bc5d05ff18f8ad38efdb4f76"
+  inputs-digest = "065e51b3b6886232f5a095c860a5cfb1484f3f684a618422bfa89f2de95cc59d"
   solver-name = "gps-cdcl"
   solver-version = 1

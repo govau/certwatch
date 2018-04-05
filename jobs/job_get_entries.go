@@ -17,6 +17,7 @@ import (
 	ctjsonclient "github.com/google/certificate-transparency-go/jsonclient"
 	cttls "github.com/google/certificate-transparency-go/tls"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
+	"github.com/govau/cf-common/jobs"
 	"github.com/jackc/pgx"
 )
 
@@ -176,7 +177,7 @@ func RefreshMetadataForEntries(qc *que.Client, logger *log.Logger, job *que.Job,
 
 	// If we got any, try again
 	if processed > 0 {
-		return ErrImmediateReschedule
+		return jobs.ErrImmediateReschedule
 	}
 
 	// Returning nil will commit and reschedule via cron
