@@ -6,6 +6,7 @@ import (
 	"log"
 
 	que "github.com/bgentry/que-go"
+	"github.com/govau/cf-common/jobs"
 	"github.com/jackc/pgx"
 )
 
@@ -28,7 +29,7 @@ func NewLogMetadata(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx
 			if err != nil {
 				return err
 			}
-			return ErrImmediateReschedule
+			return jobs.ErrImmediateReschedule
 		}
 		return err
 	}

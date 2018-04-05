@@ -8,13 +8,12 @@ import (
 	"os"
 	"time"
 
+	"github.com/govau/cf-common/jobs"
 	"github.com/jackc/pgx"
 
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-
-	"github.com/govau/certwatch/db"
 
 	ct "github.com/google/certificate-transparency-go"
 	cttls "github.com/google/certificate-transparency-go/tls"
@@ -236,7 +235,10 @@ func (s *server) showCert(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	pgxPool, err := db.GetPGXPool(5)
+	pgxPool, err := pgx.NewConnPool(pgx.ConnPoolConfig{
+		MaxConnections: 2,
+		ConnConfig:     *jobs.MustPGXConfigFromCloudFoundry(),
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
