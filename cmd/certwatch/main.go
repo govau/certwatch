@@ -98,12 +98,6 @@ func main() {
 			return nil
 		},
 		InitSQL: `
-			CREATE TABLE IF NOT EXISTS cron_metadata (
-				id             text                     PRIMARY KEY,
-				last_completed timestamp with time zone NOT NULL DEFAULT TIMESTAMP 'EPOCH',
-				next_scheduled timestamp with time zone NOT NULL DEFAULT TIMESTAMP 'EPOCH'
-			);
-
 			CREATE TABLE IF NOT EXISTS monitored_logs (
 				url       text      PRIMARY KEY,
 				processed bigint    NOT NULL DEFAULT 0,
