@@ -11,7 +11,7 @@
   branch = "fixshutdown"
   name = "github.com/bgentry/que-go"
   packages = ["."]
-  revision = "decd7cabcfb7e5ae1a547cf0257b2fc63e634331"
+  revision = "9937fbb63d3e5c2cd14d30378eaee59641fc4fbe"
   source = "github.com/govau/que-go"
 
 [[projects]]
@@ -73,7 +73,7 @@
     "env",
     "jobs"
   ]
-  revision = "2a3c13c3e85e5fdd50721c7be21aa44f19143022"
+  revision = "ec7986c271ac0b9196b0291981305da37c9c4a24"
 
 [[projects]]
   name = "github.com/jackc/pgx"
