@@ -73,7 +73,7 @@
     "env",
     "jobs"
   ]
-  revision = "3d5ef580616adc865693ab62a8785c5f5a9d0e84"
+  revision = "2a3c13c3e85e5fdd50721c7be21aa44f19143022"
 
 [[projects]]
   name = "github.com/jackc/pgx"

@@ -65,7 +65,7 @@ func CheckLogSTH(qc *que.Client, logger *log.Logger, job *que.Job, tx *pgx.Tx) e
 
 	// Don't reschedule us as a cron please.
 	if state != StateActive {
-		return jobs.ErrDidNotReschedule
+		return jobs.ErrDoNotReschedule
 	}
 
 	url, client := makeClientForURL(connectURL)
